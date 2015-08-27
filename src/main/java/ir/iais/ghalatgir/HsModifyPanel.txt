@@ -103,6 +103,7 @@ public class HsModifyPanel extends TaggedPanel {
                 }
                 
                 Session session = HibernateUtil.getSessionFactory().openSession();
+                // fuck this 
                 try {
                     session.beginTransaction();
                     session.saveOrUpdate(tarefe);
