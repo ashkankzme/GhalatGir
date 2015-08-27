@@ -1,0 +1,180 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package ir.customs.khodEzhari.kala.hs;
+
+import ir.customs.saloon.HibernateUtil;
+import ir.customs.saloon.hsCode.ReadCsv;
+import ir.customs.saloon.hsCode.Tarefe;
+import ir.customs.shared.darbKhoruj.office.fecade.UserInterfaceException;
+import ir.mersad.utils.BootstrapFeedbackPanel;
+import ir.mersad.utils.authentication.domain.User;
+import ir.mersad.utils.authentication.ui.TaggedPanel;
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.apache.wicket.ajax.AjaxRequestTarget;
+import org.apache.wicket.ajax.form.AjaxFormSubmitBehavior;
+import org.apache.wicket.ajax.markup.html.form.AjaxButton;
+import org.apache.wicket.markup.html.WebMarkupContainer;
+import org.apache.wicket.markup.html.form.Form;
+import org.apache.wicket.markup.html.form.TextField;
+import org.apache.wicket.markup.html.form.upload.FileUpload;
+import org.apache.wicket.markup.html.form.upload.FileUploadField;
+import org.apache.wicket.model.Model;
+import org.apache.wicket.model.PropertyModel;
+import org.hibernate.HibernateException;
+import org.hibernate.Session;
+
+/**
+ *
+ * @author saeed
+ */
+public class HsModifyPanel extends TaggedPanel {
+
+    private Tarefe tarefe;
+    
+    private Session alaki = HibernateUtil.getSessionFactory().openSession();
+
+    public HsModifyPanel(String id, User usr) {
+        super(id);
+        Form form = new Form("form");
+        BootstrapFeedbackPanel feedBack = new BootstrapFeedbackPanel("feedBack");
+        feedBack.setOutputMarkupId(true);
+        form.add(feedBack);
+        WebMarkupContainer wmc = new WebMarkupContainer("wmc");
+        wmc.setOutputMarkupId(true);
+        TextField hsCode = new TextField("hsCode", new Model());
+        TextField hsDesc = new TextField("hsDesc", new Model());
+        hsDesc.setOutputMarkupId(true);
+        TextField hoghooghVoroodi = new TextField("hoghooghVoroodi", new Model());
+        hoghooghVoroodi.setOutputMarkupId(true);
+
+        hsCode.add(new AjaxFormSubmitBehavior("onblur") {
+
+            @Override
+            protected void onSubmit(AjaxRequestTarget target) {
+                String hs = hsCode.getDefaultModelObjectAsString();
+                tarefe = Tarefe.loadByHS(hs, new Date());
+                if (tarefe != null) {
+                    hsDesc.setDefaultModelObject(tarefe.getDescription());
+                    hoghooghVoroodi.setDefaultModelObject(tarefe.getHoghughVorudi());
+                    target.add(wmc);
+                }
+            }
+
+        });
+
+        AjaxButton addHs = new AjaxButton("addHs") {
+
+            @Override
+            protected void onSubmit(AjaxRequestTarget target, Form<?> form) {
+                try {
+                    String hs = hsCode.getDefaultModelObjectAsString();
+                    String desc = hsDesc.getDefaultModelObjectAsString();
+                    String hV = hoghooghVoroodi.getDefaultModelObjectAsString();
+                    if (hs.equals("") || desc.equals("") || hV.equals("")) {
+                        throw new UserInterfaceException("اطلاعات مورد نیاز وارد نشده است.");
+                    }
+                    if(hs.length()<8){
+                        throw new UserInterfaceException("تعرفه باید حداقل ۸ رقم باشد.");
+                    }
+                    if(desc.length()>255){
+                        desc = desc.substring(0, 255);
+                    }
+                    BigDecimal makhaz = BigDecimal.valueOf(Double.valueOf(hV));
+                    if (tarefe != null) {
+                        tarefe.setHsCode(hs);
+                        tarefe.setDescription(desc);
+                        tarefe.setHoghughVorudi(makhaz);
+                    } else {
+                        tarefe = new Tarefe(hs, desc, makhaz, new Date());
+                    }
+                } catch (Exception ex) {
+                    error(ex.getMessage());
+                    target.add(form);
+                    return;
+                }
+                
+                Session session = HibernateUtil.getSessionFactory().openSession();
+                try {
+                    session.beginTransaction();
+                    session.saveOrUpdate(tarefe);
+                    session.getTransaction().commit();
+                    success("تغییرات اعمال شد.");
+                    target.add(form);
+                } finally {
+                    if (session != null && session.isOpen()) {
+                        session.clear();
+                        session.close();
+                    }
+                }
+
+            }
+
+        };
+        AjaxButton removeHs = new AjaxButton("removeHs") {
+
+            @Override
+            protected void onSubmit(AjaxRequestTarget target, Form<?> form) {
+                if(tarefe==null){
+                    error("تعرفه مشخص نشده است.");
+                    target.add(form);
+                    return;
+                }
+                Session session = HibernateUtil.getSessionFactory().openSession();
+                try {
+                    session.beginTransaction();
+                    tarefe.setEndDate(new Date());
+                    session.saveOrUpdate(tarefe);
+                    session.getTransaction().commit();
+                    success("اعتبار تعرفه خاتمه یافت.");
+                    target.add(form);
+                } finally {
+                    if (session != null && session.isOpen()) {
+                        session.clear();
+                        session.close();
+                    }
+                }
+            }
+
+        };
+
+        wmc.add(hsCode, hsDesc, hoghooghVoroodi, addHs, removeHs);
+        form.add(wmc);
+        add(form);
+
+        FileUploadField uploadView = new FileUploadField("uploadView");
+        AjaxButton send = new AjaxButton("send") {
+
+            @Override
+            protected void onSubmit(AjaxRequestTarget target, Form<?> form) {
+                FileUpload fileUpload = uploadView.getFileUpload();
+                try {
+                    if(fileUpload==null){
+                        throw new UserInterfaceException("فایل انتخاب نشده است.");
+                    }
+                    ArrayList<Tarefe> list = ReadCsv.loadTarefeListFromInputStream(fileUpload.getInputStream());
+                    Tarefe.updateFromList(list);
+                    success("ذخیره شد.");
+                } catch (IOException ex) {
+                    error("خطا در فرمت فایل ارسالی");
+                } catch (HibernateException ex) {
+                    error("خطا در ذخیره اطلاعات");
+                } catch (UserInterfaceException ex) {
+                    error(ex.getMessage());
+                }
+                target.add(form);
+            }
+
+        };
+        form.add(uploadView, send);
+    }
+
+}
