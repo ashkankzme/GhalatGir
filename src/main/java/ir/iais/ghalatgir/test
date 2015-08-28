@@ -1,0 +1,81 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package javaapplication7;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ *
+ * @author ashkan
+ */
+public class JavaApplication7 {
+    
+    public void testAlaki(){
+        Session session = HibernateUtil.getSessionFactory().openSession();
+        session.beginTransaction();
+        session.createQuery("crapface");
+        session.clear();
+        session.close();
+    }
+
+    public void rearrange(String[] words) {
+        for (int i = 0; i < words.length; i++) {
+            if (isOrdered(words[i])) {
+                String temp = "";
+                for (int j = words[i].length()-1; j >= 0; j--){
+                    temp += words[i].charAt(j);
+                }
+                words[i] = temp;
+            } else {
+                String temp = "";
+                for (int j = 0; j < sort(words[i]).size(); j++){
+                    temp += sort(words[i]).get(j);
+                }
+                words[i] = temp;
+            }
+        }
+    }
+    
+    private List<Character> sort(String word){
+        Character[] wordChars = new Character[word.toCharArray().length];
+        for (int i = 0; i < wordChars.length; i++){
+            wordChars[i] = word.toCharArray()[i];
+        }
+        List<Character> original = new ArrayList<>(Arrays.asList(wordChars));
+        List<Character> sorted = new ArrayList<>();
+        for (Character c : original) {
+            sorted.add(c);
+        }
+        Collections.sort(sorted);
+        return sorted;
+    }
+
+    private boolean isOrdered(String word) {
+        Character[] wordChars = new Character[word.toCharArray().length];
+        for (int i = 0; i < wordChars.length; i++){
+            wordChars[i] = word.toCharArray()[i];
+        }
+        List<Character> original = new ArrayList<>(Arrays.asList(wordChars));
+        List<Character> sorted = new ArrayList<>();
+        for (Character c : original) {
+            sorted.add(c);
+        }
+        Collections.sort(sorted);
+        for (int i = 0; i < sorted.size(); i++) {
+            if (!sorted.get(i).equals(original.get(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+}
+

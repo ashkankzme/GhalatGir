@@ -39,8 +39,6 @@ import org.hibernate.Session;
 public class HsModifyPanel extends TaggedPanel {
 
     private Tarefe tarefe;
-    
-    private Session alaki = HibernateUtil.getSessionFactory().openSession();
 
     public HsModifyPanel(String id, User usr) {
         super(id);
@@ -103,7 +101,6 @@ public class HsModifyPanel extends TaggedPanel {
                 }
                 
                 Session session = HibernateUtil.getSessionFactory().openSession();
-                // fuck this 
                 try {
                     session.beginTransaction();
                     session.saveOrUpdate(tarefe);

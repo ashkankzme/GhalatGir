@@ -14,10 +14,10 @@ import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.TryStmt;
-import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -30,18 +30,23 @@ import java.util.LinkedList;
 public class CorrectSessionClosingEnsurance {
 
     public static void main(String[] args) throws FileNotFoundException, IOException, ParseException {
-        FileInputStream in = new FileInputStream("/media/ashkan/B/pazhm/GhalatGir/GhalatGir/src/main/java/ir/iais/ghalatgir/HsModifyPanel.txt");
+        //FileInputStream in = new FileInputStream("/media/ashkan/B/pazhm/GhalatGir/GhalatGir/src/main/java/ir/iais/ghalatgir/HsModifyPanel.txt");
+        for (String arg : args) {
+            FileInputStream in = new FileInputStream(arg);
 
-        CompilationUnit cu;
-        try {
-            // parse the file
-            cu = JavaParser.parse(in);
-        } finally {
-            in.close();
+            CompilationUnit cu;
+            try {
+                // parse the file
+                cu = JavaParser.parse(in);
+            } finally {
+                in.close();
+            }
+
+            // prints the resulting compilation unit to default system output
+            if (isClosingSessionsProperly(cu)) {
+                System.out.println("no problems detected with the file : "+arg);
+            }
         }
-
-        // prints the resulting compilation unit to default system output
-        isClosingSessionsProperly(cu);
         //System.out.println(cu.toString());
     }
 
@@ -70,7 +75,10 @@ public class CorrectSessionClosingEnsurance {
                             containsError = true;
                         } else {
                             BlockStmt body = member instanceof MethodDeclaration ? ((MethodDeclaration) member).getBody() : ((ConstructorDeclaration) member).getBlock();
-                            containsError = !isHandlingSessionsProperly(body);
+                            Boolean handlingSessionsProperlyResult = isHandlingSessionsProperly(body);
+                            if (!containsError) {
+                                containsError = !handlingSessionsProperlyResult;
+                            }
                         }
 
                     }
@@ -92,26 +100,29 @@ public class CorrectSessionClosingEnsurance {
 
         for (Statement statement : body.getStmts()) {
             for (Node child : body.getChildrenNodes()) {
-                blocks.addLast(child);
+                if (!blocks.contains(child) && consumesSession(child.toStringWithoutComments())) {
+                    blocks.addLast(child);
+                }
             }
+        }
+
+        for (Node block : blocks) {
+            System.out.println(block.toStringWithoutComments());
         }
 
         while (!blocks.isEmpty()) {
             Node current = blocks.removeFirst();
 
-            if (consumesSession(current.toStringWithoutComments()) && !isUsingSessionsProperly(current)){
-                System.out.println("You are using a session variable outside a try-finally block in the following block of code : ");
-                System.out.println(current.toString());
+            if (current.getChildrenNodes().isEmpty() || (current instanceof MethodCallExpr)) {
+                if (!isInsideATryBlock(current) || (isClosingSession(current.toStringWithoutComments()) && !isClosingSessionInsideFinally(current))) {// see about that finally later :*
+                    return false;
+                }
             }
-//            if (current instanceof TryStmt) {
-//                TryStmt tryBlock = (TryStmt) current;
-//                if (consumesSession(tryBlock.toStringWithoutComments())) {
-//                    System.out.println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-//                    System.out.println(tryBlock.toStringWithoutComments());
-//                }
-//            }
+
             for (Node child : current.getChildrenNodes()) {
-                blocks.addLast(child);
+                if (!blocks.contains(child) && consumesSession(child.toStringWithoutComments())) {
+                    blocks.addLast(child);
+                }
             }
         }
 
@@ -124,26 +135,68 @@ public class CorrectSessionClosingEnsurance {
 
     private static boolean consumesSession(String block) {
         return block.contains(".sessionWithOptions(") || block.contains(".flush()") || block.contains(".setFlushMode(") || block.contains(".getFlushMode()") || block.contains(".setCacheMode(")
-                || block.contains(".getCacheMode()") || block.contains(".getSessionFactory()") || block.contains(".close()") || block.contains(".cancelQuery()") || block.contains(".isOpen()")
+                || block.contains(".getCacheMode()") /*|| block.contains(".getSessionFactory()")*/ || block.contains(".close()") || block.contains(".cancelQuery()") || block.contains(".isOpen()")
                 || block.contains(".isConnected()") || block.contains(".isDirty()") || block.contains(".setDefaultReadOnly(") || block.contains(".isDefaultReadOnly()") || block.contains(".getIdentifier(")
                 || block.contains(".evict(") || block.contains(".load(") || block.contains(".replicate(") || block.contains(".save(") || block.contains(".saveOrUpdate(") || block.contains(".update(")
                 || block.contains(".merge(") || block.contains(".persist(") || block.contains(".delete(") || block.contains(".lock(") || block.contains(".buildLockRequest(") || block.contains(".refresh(")
                 || block.contains(".getCurrentLockMode(") || block.contains(".createFilter(") || block.contains(".clear()") || block.contains(".getEntityName(") || block.contains(".byId(") || block.contains(".byNaturalId(")
                 || block.contains(".bySimpleNaturalId(") || block.contains(".enableFilter(") || block.contains(".getEnabledFilter(") || block.contains(".disableFilter(") || block.contains(".getStatistics()")
                 || block.contains(".isReadOnly(") || block.contains(".setReadOnly(") || block.contains(".doWork(") || block.contains(".doReturningWork(") || block.contains(".disconnect()") || block.contains(".reconnect(")
-                || block.contains(".isFetchProfileEnabled(") || block.contains(".enableFetchProfile(") || block.contains(".disableFetchProfile(") || block.contains(".getTypeHelper()") || block.contains(".getLobHelper()");
+                || block.contains(".isFetchProfileEnabled(") || block.contains(".enableFetchProfile(") || block.contains(".disableFetchProfile(") || block.contains(".getTypeHelper()") || block.contains(".getLobHelper()")
+                || block.contains(".connection()") || block.contains(".getEntityMode()") || block.contains(".getSession(") || block.contains(".beginTransaction()") || block.contains(".getTransaction()")
+                || block.contains(".createCriteria(") || block.contains(".createQuery(") || block.contains(".createSQLQuery(") || block.contains(".getNamedQuery(");
     }
 
-    private static boolean isUsingSessionsProperly(Node block) {
+    private static boolean consumesSessionWithoutClosingIt(String block) {
+        return block.contains(".sessionWithOptions(") || block.contains(".flush()") || block.contains(".setFlushMode(") || block.contains(".getFlushMode()") || block.contains(".setCacheMode(")
+                || block.contains(".getCacheMode()") || block.contains(".cancelQuery()") || block.contains(".isConnected()") || block.contains(".createQuery(") || block.contains(".createSQLQuery(")
+                || block.contains(".isDirty()") || block.contains(".setDefaultReadOnly(") || block.contains(".isDefaultReadOnly()") || block.contains(".getIdentifier(") || block.contains(".getNamedQuery(")
+                || block.contains(".evict(") || block.contains(".load(") || block.contains(".replicate(") || block.contains(".save(") || block.contains(".saveOrUpdate(") || block.contains(".update(")
+                || block.contains(".merge(") || block.contains(".persist(") || block.contains(".delete(") || block.contains(".lock(") || block.contains(".buildLockRequest(") || block.contains(".refresh(")
+                || block.contains(".getCurrentLockMode(") || block.contains(".createFilter(") || block.contains(".getEntityName(") || block.contains(".byId(") || block.contains(".byNaturalId(")
+                || block.contains(".bySimpleNaturalId(") || block.contains(".enableFilter(") || block.contains(".getEnabledFilter(") || block.contains(".disableFilter(") || block.contains(".getStatistics()")
+                || block.contains(".isReadOnly(") || block.contains(".setReadOnly(") || block.contains(".doWork(") || block.contains(".doReturningWork(") || block.contains(".disconnect()") || block.contains(".reconnect(")
+                || block.contains(".isFetchProfileEnabled(") || block.contains(".enableFetchProfile(") || block.contains(".disableFetchProfile(") || block.contains(".getTypeHelper()") || block.contains(".getLobHelper()")
+                || block.contains(".connection()") || block.contains(".getEntityMode()") || block.contains(".getSession(") || block.contains(".beginTransaction()") || block.contains(".getTransaction()")
+                || block.contains(".createCriteria(");
+    }
+
+    private static boolean isInsideATryBlock(Node block) {
         // we here check that the parent node must be a try type
-        while (block.getParentNode() != null && !(block.getParentNode() instanceof BodyDeclaration)){
+        while (block.getParentNode() != null && !(block.getParentNode() instanceof BodyDeclaration)) {
+            if (block instanceof TryStmt /*|| block.toStringWithoutComments().startsWith("finally")*/) {
+                return true;
+            }
             block = block.getParentNode();
-            System.out.println("@@@@@@@@@@@@@@@@@@@@");
-            System.out.println(block.toString());
         }
         //then we check that the session is closed properly here in the finnaly
-        
-        return true;
+        return false;
+    }
+
+    private static boolean isClosingSession(String block) {
+        return block.contains(".clear()") || block.contains(".close()");
+    }
+
+    private static boolean isClosingSessionInsideFinally(Node block) {
+        while (block.getParentNode() != null && !(block.getParentNode() instanceof BodyDeclaration)) {
+            if (block instanceof TryStmt /*|| block.toStringWithoutComments().startsWith("finally")*/) {
+                break;
+            }
+            block = block.getParentNode();
+        }
+
+        if (block instanceof TryStmt) {
+            TryStmt tryBlock = (TryStmt) block;
+            if (tryBlock.getFinallyBlock() == null) {
+                return false;
+            }
+            String finallyAsString = tryBlock.getFinallyBlock().toStringWithoutComments();
+            finallyAsString = finallyAsString.replace("\n", "");
+            return finallyAsString.matches("(.*)if(.*)\\Q!=\\E(.*)null(.*)\\Q&&\\E(.*)\\Q.isOpen()\\E(.*)\\Q.clear()\\E(.*)\\Q.close()\\E(.*)")
+                    && !consumesSessionWithoutClosingIt(finallyAsString);
+        } else {
+            return false;
+        }
     }
 
 }
